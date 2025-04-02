@@ -1,17 +1,21 @@
 // Import necessary dependencies for web server, database, serialization, and authentication
-use actix_web::{web, App, HttpResponse, HttpServer, post, get, delete};
+use actix_web::{web, App, HttpResponse, HttpServer, post, get, delete, put};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::postgres::PgPool;
 use uuid::Uuid;
 use bcrypt::{hash, verify, DEFAULT_COST};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, Duration};
 use jsonwebtoken::{encode, Header, EncodingKey};
+use std::env;
+use env_logger;
+use actix_cors::Cors;
 
 // Claims structure for JWT token payload
 #[derive(Debug, Serialize, Deserialize)]
 struct Claims {
     sub: String,      // Subject (user ID)
-    role: String,     // User role (e.g., "admin", "staff")
+    role: String,     // User role (e.g., "restaurant", "customer")
     exp: usize,       // Token expiration timestamp
 }
 
@@ -60,19 +64,44 @@ struct WaitlistEntry {
 // Endpoint to register a new user
 #[post("/register")]
 async fn register(data: web::Json<RegisterData>, db: web::Data<PgPool>) -> HttpResponse {
-    // Hash the password before storing
-    let hashed_password = hash(&data.password, DEFAULT_COST).unwrap();
-    let user_id = Uuid::new_v4();
+    // Validate role
+    if data.role != "restaurant" && data.role != "customer" {
+        return HttpResponse::BadRequest().json("Invalid role. Must be either 'restaurant' or 'customer'");
+    }
 
-    // Insert new user into database
-    let result = sqlx::query!(
-        "INSERT INTO users (id, email, password, role) VALUES ($1, $2, $3, $4)",
-        user_id, data.email, hashed_password, data.role
-    ).execute(db.get_ref()).await;
+    // Check if email already exists
+    let existing_user = sqlx::query!(
+        "SELECT id FROM users WHERE email = $1",
+        data.email
+    ).fetch_optional(db.get_ref()).await;
 
-    match result {
-        Ok(_) => HttpResponse::Ok().json("User registered"),
-        Err(_) => HttpResponse::InternalServerError().json("Error registering user"),
+    match existing_user {
+        Ok(Some(_)) => {
+            return HttpResponse::BadRequest().json("Email already registered");
+        }
+        Ok(None) => {
+            // Hash the password before storing
+            let hashed_password = hash(&data.password, DEFAULT_COST).unwrap();
+            let user_id = Uuid::new_v4();
+
+            // Insert new user into database
+            let result = sqlx::query!(
+                "INSERT INTO users (id, email, password, role) VALUES ($1, $2, $3, $4)",
+                user_id, data.email, hashed_password, data.role
+            ).execute(db.get_ref()).await;
+
+            match result {
+                Ok(_) => HttpResponse::Ok().json("User registered"),
+                Err(e) => {
+                    println!("Database error: {:?}", e);
+                    HttpResponse::InternalServerError().json(format!("Error registering user: {}", e))
+                }
+            }
+        }
+        Err(e) => {
+            println!("Database error: {:?}", e);
+            HttpResponse::InternalServerError().json(format!("Database error: {}", e))
+        }
     }
 }
 
@@ -257,16 +286,85 @@ async fn remove_from_waitlist(
     }
 }
 
+// Endpoint to update waitlist entry position
+#[put("/waitlist/{entry_id}/position")]
+async fn update_waitlist_position(
+    path: web::Path<Uuid>,
+    position: web::Json<i32>,
+    db: web::Data<PgPool>,
+) -> HttpResponse {
+    let entry_id = path.into_inner();
+    
+    let result = sqlx::query!(
+        "UPDATE waitlist_entries SET position = $1, updated_at = NOW() WHERE id = $2",
+        position.0, entry_id
+    ).execute(db.get_ref()).await;
+
+    match result {
+        Ok(_) => HttpResponse::Ok().json("Position updated"),
+        Err(_) => HttpResponse::InternalServerError().json("Error updating position"),
+    }
+}
+
+// Endpoint to check refund eligibility
+#[get("/waitlist/{entry_id}/refund-eligibility")]
+async fn check_refund_eligibility(
+    path: web::Path<Uuid>,
+    db: web::Data<PgPool>,
+) -> HttpResponse {
+    let entry_id = path.into_inner();
+    
+    // Get entry details and restaurant refund window
+    let result = sqlx::query!(
+        "SELECT w.created_at, r.refund_window_minutes, w.payment_status 
+         FROM waitlist_entries w 
+         JOIN restaurants r ON w.restaurant_id = r.id 
+         WHERE w.id = $1",
+        entry_id
+    ).fetch_one(db.get_ref()).await;
+
+    match result {
+        Ok(entry) => {
+            let created_at = entry.created_at.unwrap_or(Utc::now());
+            let refund_window = Duration::minutes(entry.refund_window_minutes.unwrap_or(30) as i64);
+            let now = Utc::now();
+            let is_eligible = (now - created_at).num_minutes() >= refund_window.num_minutes() 
+                && entry.payment_status == Some("paid".to_string());
+            
+            HttpResponse::Ok().json(json!({
+                "eligible": is_eligible,
+                "time_elapsed": (now - created_at).num_minutes(),
+                "refund_window": entry.refund_window_minutes.unwrap_or(30)
+            }))
+        }
+        Err(_) => HttpResponse::InternalServerError().json("Error checking refund eligibility"),
+    }
+}
+
 // Main application entry point
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // Initialize logging
+    env_logger::init();
+
     // Database connection URL - in production, this should be loaded from environment variables
-    let database_url = "postgres://postgres:postgres@localhost/waitlist_db";
-    let pool = PgPool::connect(&database_url).await.expect("Failed to create pool");
+    let database_url = "postgres://karankapur@localhost/waitlist_db";
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to create pool");
+
+    println!("Server starting at http://127.0.0.1:8080");
 
     // Create and configure the web server
     HttpServer::new(move || {
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header()
+            .max_age(3600);
+
         App::new()
+            .wrap(cors)
             .app_data(web::Data::new(pool.clone()))
             .service(register)
             .service(login)
@@ -276,6 +374,8 @@ async fn main() -> std::io::Result<()> {
             .service(get_waitlist)
             .service(update_waitlist_status)
             .service(remove_from_waitlist)
+            .service(update_waitlist_position)
+            .service(check_refund_eligibility)
     })
     .bind("127.0.0.1:8080")?
     .run()

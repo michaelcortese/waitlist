@@ -14,6 +14,7 @@ CREATE TABLE restaurants (
     address VARCHAR NOT NULL,
     phone VARCHAR NOT NULL,
     current_wait_time INTEGER DEFAULT 0,
+    refund_window_minutes INTEGER DEFAULT 30,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -26,6 +27,8 @@ CREATE TABLE waitlist_entries (
     phone_number VARCHAR NOT NULL,
     notes TEXT,
     status VARCHAR NOT NULL,
+    position INTEGER DEFAULT 0,
+    payment_status VARCHAR,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 ); 

@@ -1,12 +1,66 @@
-# React + Vite
+# Waitlist Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A React-based frontend for the restaurant waitlist application.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Join a restaurant waitlist
+- View estimated wait times
+- Receive confirmation when added to the waitlist
+- Mobile-friendly design
 
-## Expanding the ESLint configuration
+## Backend Integration
 
-If you are developing a production application, we recommend using TypeScript and enable type-aware lint rules. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+This frontend is integrated with a Rust-based backend API. The integration includes:
+
+- Authentication services (login, register, logout)
+- Restaurant services (create, update wait time)
+- Waitlist services (add, get, update status, remove)
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v16 or higher)
+- npm or yarn
+
+### Installation
+
+1. Clone the repository
+2. Install dependencies:
+   ```
+   npm install
+   ```
+3. Start the development server:
+   ```
+   npm run dev
+   ```
+
+### Backend Connection
+
+The frontend is configured to connect to the backend at `http://localhost:8080`. If your backend is running on a different port or host, update the `baseURL` in `src/services/api.js`.
+
+## Project Structure
+
+- `src/components/` - React components
+- `src/services/` - API service modules
+- `src/context/` - React context providers
+- `src/assets/` - Static assets
+
+## Development
+
+To start the development server:
+
+```
+npm run dev
+```
+
+To build for production:
+
+```
+npm run build
+```
+
+## License
+
+MIT

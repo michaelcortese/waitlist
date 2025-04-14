@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO restaurants (id, name, address, phone, current_wait_time) VALUES ($1, $2, $3, $4, 0)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f1c4a8394d5403645bbeffa988d2dc43ed32022142f971c27e5c6c34cf2072c8"
+}

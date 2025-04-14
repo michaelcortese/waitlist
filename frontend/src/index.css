@@ -1,0 +1,354 @@
+/* Modern CSS Variables */
+:root {
+  --primary-color: #6366f1;
+  --primary-hover: #4f46e5;
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  --background-main: #ffffff;
+  --background-card: #ffffff;
+  --success-color: #10b981;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --border-radius: 1rem;
+  --spacing-xs: 0.5rem;
+  --spacing-sm: 1rem;
+  --spacing-md: 1.5rem;
+  --spacing-lg: 2rem;
+  --max-width: 28rem;
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 1rem);
+}
+
+/* Base Styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--background-main);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* Modern Container Layout */
+.waitlist-container {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--background-main);
+}
+
+/* Content Layout */
+.waitlist-content {
+  flex: 1;
+  padding: var(--spacing-lg) var(--spacing-md);
+  padding-bottom: calc(var(--spacing-lg) + var(--safe-area-inset-bottom));
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* Restaurant Info */
+.restaurant-label {
+  text-transform: uppercase;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--primary-color);
+  letter-spacing: 0.05em;
+  animation: slide-up 0.4s ease-out;
+}
+
+.restaurant-name {
+  font-size: clamp(1.75rem, 7vw, 2.5rem);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: var(--spacing-xs) 0 var(--spacing-lg);
+  animation: slide-up 0.4s ease-out 0.1s backwards;
+  line-height: 1.2;
+}
+
+/* Wait Time Display */
+.wait-time {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--text-secondary);
+  animation: slide-up 0.4s ease-out 0.2s backwards;
+  font-size: 1.125rem;
+}
+
+.clock-icon, .check-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+}
+
+/* Modern Button */
+.join-button {
+  width: 100%;
+  margin-top: var(--spacing-lg);
+  padding: 1rem var(--spacing-md);
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 1rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+  animation: slide-up 0.4s ease-out 0.3s backwards;
+  position: sticky;
+  bottom: var(--safe-area-inset-bottom);
+  margin-bottom: var(--spacing-md);
+}
+
+/* Confirmation Screen */
+.confirmation {
+  text-align: center;
+  animation: fade-in 0.4s ease-out;
+  padding: var(--spacing-lg) 0;
+}
+
+.check-icon {
+  width: 4rem;
+  height: 4rem;
+  color: var(--success-color);
+  margin: 0 auto;
+  animation: scale-in 0.4s ease-out;
+}
+
+.confirmation-title {
+  font-size: clamp(1.5rem, 6vw, 2rem);
+  font-weight: 700;
+  margin: var(--spacing-md) 0;
+  animation: slide-up 0.4s ease-out 0.1s backwards;
+}
+
+.timer-container {
+  margin: var(--spacing-lg) 0;
+  animation: slide-up 0.4s ease-out 0.2s backwards;
+}
+
+.timer-label {
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+  font-size: 1.125rem;
+}
+
+.countdown {
+  font-size: clamp(2.5rem, 10vw, 3.5rem);
+  font-weight: 700;
+  color: var(--primary-color);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.notification-box {
+  margin-top: var(--spacing-lg);
+  padding: var(--spacing-md);
+  background-color: var(--background-main);
+  border: 2px solid #e5e7eb;
+  border-radius: 1rem;
+  font-size: 1rem;
+  color: var(--text-secondary);
+  animation: slide-up 0.4s ease-out 0.3s backwards;
+}
+
+/* Modern Animations */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Responsive Design */
+@media (min-width: 768px) {
+  .waitlist-container {
+    padding: var(--spacing-lg);
+    display: grid;
+    place-items: center;
+  }
+
+  .waitlist-content {
+    max-width: var(--max-width);
+    padding: var(--spacing-lg);
+    background-color: var(--background-card);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-md);
+  }
+
+  .join-button {
+    position: static;
+    margin-bottom: 0;
+  }
+
+  .notification-box {
+    background-color: var(--background-main);
+  }
+}
+
+/* Form styles */
+.form-group {
+  margin-bottom: 1rem;
+  width: 100%;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 0.375rem;
+  font-size: 1rem;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.error-message {
+  color: #dc2626;
+  background-color: #fee2e2;
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+
+.waitlist-id {
+  margin-top: 1.5rem;
+  padding: 0.75rem;
+  background-color: #f3f4f6;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  color: #4b5563;
+}
+
+/* Legal Terms Page Styles */
+.legal-terms-container {
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.legal-terms-content {
+  color: #333;
+}
+
+.legal-terms-content h1 {
+  color: #2c3e50;
+  margin-bottom: 2rem;
+  font-size: 2rem;
+}
+
+.legal-section {
+  margin-bottom: 2rem;
+}
+
+.legal-section h2 {
+  color: #2c3e50;
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.legal-section p {
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.legal-section ul {
+  list-style-type: disc;
+  margin-left: 2rem;
+  margin-bottom: 1rem;
+}
+
+.legal-section li {
+  margin-bottom: 0.5rem;
+  line-height: 1.6;
+}
+
+/* Updated Waitlist Form Styles */
+.consent-container {
+  margin: 1rem 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.consent-container input[type="checkbox"] {
+  margin-top: 0.25rem;
+}
+
+.consent-container label {
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.consent-container a {
+  color: #3498db;
+  text-decoration: none;
+}
+
+.consent-container a:hover {
+  text-decoration: underline;
+}
+
+.join-button:disabled {
+  background-color: #bdc3c7;
+  cursor: not-allowed;
+  opacity: 0.7;
+}

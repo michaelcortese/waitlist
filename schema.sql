@@ -1,3 +1,6 @@
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- Create users table
 CREATE TABLE users (
     id UUID PRIMARY KEY,
@@ -26,6 +29,7 @@ CREATE TABLE waitlist_entries (
     phone_number VARCHAR NOT NULL,
     notes TEXT,
     status VARCHAR NOT NULL,
+    consent_given BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 ); 

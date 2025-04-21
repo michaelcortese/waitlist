@@ -1,8 +1,11 @@
 import axios from 'axios';
 
+// API base URL - backend server runs on port 8080
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+
 // Create an axios instance with default config
 const api = axios.create({
-  baseURL: 'http://localhost:8080', // Default backend URL
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -11,6 +14,7 @@ const api = axios.create({
 // Add a request interceptor to add the auth token to requests
 api.interceptors.request.use(
   (config) => {
+    console.log('🚀 Making request to:', config.url);
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -18,6 +22,19 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
+    console.error('❌ Request error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add a response interceptor for debugging
+api.interceptors.response.use(
+  (response) => {
+    console.log('✅ Response from:', response.config.url, response.data);
+    return response;
+  },
+  (error) => {
+    console.error('❌ Response error:', error.response?.data || error.message);
     return Promise.reject(error);
   }
 );
@@ -45,30 +62,70 @@ export const authService = {
 // Restaurant services
 export const restaurantService = {
   create: async (restaurantData) => {
-    const response = await api.post('/restaurants', restaurantData);
+    const response = await api.post('/restaurant', restaurantData);
     return response.data;
   },
   
+  getRestaurant: async (restaurantId) => {
+    try {
+      const response = await api.get(`/restaurant/${restaurantId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching restaurant:', error);
+      throw error;
+    }
+  },
+  
   updateWaitTime: async (restaurantId, waitTime) => {
-    const response = await api.put(`/restaurants/${restaurantId}/wait-time`, { wait_time: waitTime });
+    const response = await api.post(`/restaurant/${restaurantId}/update_wait_time`, { wait_time: waitTime });
     return response.data;
+  },
+  
+  getWaitlist: async (restaurantId) => {
+    try {
+      const response = await api.get(`/restaurant/${restaurantId}/waitlist`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching waitlist:', error);
+      throw error;
+    }
+  },
+  
+  updateWaitlistStatus: async (waitlistId, status) => {
+    try {
+      const response = await api.post(`/waitlist/${waitlistId}/status`, { status });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating waitlist status:', error);
+      throw error;
+    }
+  },
+  
+  removeFromWaitlist: async (waitlistId) => {
+    try {
+      const response = await api.delete(`/waitlist/${waitlistId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error removing from waitlist:', error);
+      throw error;
+    }
   }
 };
 
 // Waitlist services
 export const waitlistService = {
   addToWaitlist: async (restaurantId, waitlistData) => {
-    const response = await api.post(`/restaurants/${restaurantId}/waitlist`, waitlistData);
+    const response = await api.post(`/restaurant/${restaurantId}/waitlist`, waitlistData);
     return response.data;
   },
   
   getWaitlist: async (restaurantId) => {
-    const response = await api.get(`/restaurants/${restaurantId}/waitlist`);
+    const response = await api.get(`/restaurant/${restaurantId}/waitlist`);
     return response.data;
   },
   
   updateStatus: async (waitlistId, status) => {
-    const response = await api.put(`/waitlist/${waitlistId}/status`, status);
+    const response = await api.post(`/waitlist/${waitlistId}/status`, status);
     return response.data;
   },
   

@@ -1,482 +1,386 @@
-import { useState, useEffect } from 'react';
-import { waitlistService, restaurantService } from '../services/api';
-import { Link, useParams } from 'react-router-dom';
-// We'll uncomment this when we implement authentication
-// import { useAuth } from '../context/AuthContext';
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams } from 'react-router-dom';
+import { restaurantService } from '../services/restaurantService';
+import io from 'socket.io-client';
+import './Waitlist.css';
 
-export default function Waitlist() {
+const Waitlist = () => {
   const { restaurantId } = useParams();
-  
-  // If no restaurant ID is provided, use a default one
-  const effectiveRestaurantId = restaurantId || '123e4567-e89b-12d3-a456-426614174000';
-  
-  // Debug the restaurant ID
-  console.log('Current restaurant ID:', effectiveRestaurantId);
-  
-  // Initialize state from localStorage with a more robust approach
-  const [joined, setJoined] = useState(() => {
-    try {
-      const savedState = localStorage.getItem('waitlistState');
-      console.log('Saved state from localStorage:', savedState);
+  const [waitlistEntry, setWaitlistEntry] = useState(null);
+  const [restaurant, setRestaurant] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showCancellationAnimation, setShowCancellationAnimation] = useState(false);
+  const [showReadyAnimation, setShowReadyAnimation] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [showTimeChange, setShowTimeChange] = useState(null);
+  const countdownRef = useRef(null);
+  const lastUpdateRef = useRef(Date.now());
+  const lastWaitTimeRef = useRef(null);
+  const socketRef = useRef(null);
+  const previousWaitTimeRef = useRef(null);
+
+  useEffect(() => {
+    // Initialize socket connection
+    socketRef.current = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001', {
+      withCredentials: true,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
+    });
+
+    const socket = socketRef.current;
+
+    socket.on('connect', () => {
+      console.log('🔌 Connected to socket server');
+      if (restaurantId) {
+        socket.emit('join-restaurant', restaurantId);
+      }
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      setError('Connection error. Please try refreshing the page.');
+    });
+
+    socket.on('waitlist-update', (updatedWaitlist) => {
+      console.log('📝 Received waitlist update:', updatedWaitlist);
       
-      if (savedState) {
-        const parsedState = JSON.parse(savedState);
-        console.log('Parsed state:', parsedState);
+      // Find the user's entry in the updated waitlist
+      const userEntry = updatedWaitlist.find(entry => 
+        entry.phone_number === waitlistEntry?.phoneNumber
+      );
+
+      if (!userEntry && waitlistEntry) {
+        // Entry was removed
+        setShowCancellationAnimation(true);
+        setTimeout(() => {
+          setShowCancellationAnimation(false);
+          setWaitlistEntry(null);
+          setRemainingSeconds(0);
+        }, 3000);
+      } else if (userEntry) {
+        // Store the previous wait time before updating
+        const previousWaitTime = waitlistEntry?.estimatedWaitTime || 0;
+        previousWaitTimeRef.current = previousWaitTime;
         
-        // Check if the saved state is for the current restaurant
-        if (parsedState.restaurantId === effectiveRestaurantId) {
-          console.log('Found matching restaurant ID in localStorage');
-          return parsedState.joined || false;
-        } else {
-          console.log('Restaurant ID mismatch:', parsedState.restaurantId, 'vs', effectiveRestaurantId);
-        }
-      }
-      return false;
-    } catch (error) {
-      console.error('Error parsing localStorage data:', error);
-      return false;
-    }
-  });
-  
-  const [waitTime, setWaitTime] = useState(0);
-  
-  const [remainingTime, setRemainingTime] = useState(() => {
-    try {
-      const savedState = localStorage.getItem('waitlistState');
-      if (savedState) {
-        const parsedState = JSON.parse(savedState);
-        if (parsedState.restaurantId === effectiveRestaurantId) {
-          return parsedState.remainingTime || 0;
-        }
-      }
-      return 0;
-    } catch (error) {
-      console.error('Error parsing localStorage data:', error);
-      return 0;
-    }
-  });
-  
-  const [customerName, setCustomerName] = useState('');
-  const [partySize, setPartySize] = useState(2);
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [notes, setNotes] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  
-  const [waitlistId, setWaitlistId] = useState(() => {
-    try {
-      const savedState = localStorage.getItem('waitlistState');
-      if (savedState) {
-        const parsedState = JSON.parse(savedState);
-        if (parsedState.restaurantId === effectiveRestaurantId) {
-          return parsedState.waitlistId || null;
-        }
-      }
-      return null;
-    } catch (error) {
-      console.error('Error parsing localStorage data:', error);
-      return null;
-    }
-  });
-  
-  const [formErrors, setFormErrors] = useState({});
-  const [showJoinSuccess, setShowJoinSuccess] = useState(false);
-  const [showLeaveSuccess, setShowLeaveSuccess] = useState(false);
-  const [restaurantName, setRestaurantName] = useState('');
-  const [restaurantLoading, setRestaurantLoading] = useState(true);
-  const [consentGiven, setConsentGiven] = useState(false);
-  const [isLeaving, setIsLeaving] = useState(false);
-  
-  // We're not using isAuthenticated yet, but we'll keep the import for future use
-  // const { isAuthenticated } = useAuth();
-
-  // Phone number validation
-  const validatePhoneNumber = (phone) => {
-    const phoneRegex = /^\+?[\d\s-]{10,}$/;
-    return phoneRegex.test(phone);
-  };
-
-  // Form validation
-  const validateForm = () => {
-    const errors = {};
-    
-    if (!customerName.trim()) {
-      errors.customerName = 'Please enter your name';
-    }
-    
-    if (!phoneNumber.trim()) {
-      errors.phoneNumber = 'Please enter your phone number';
-    } else if (!validatePhoneNumber(phoneNumber)) {
-      errors.phoneNumber = 'Please enter a valid phone number';
-    }
-    
-    if (!consentGiven) {
-      errors.consent = 'Please consent to receive text messages';
-    }
-    
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  // Save state to localStorage whenever relevant values change
-  useEffect(() => {
-    if (joined || waitlistId) {
-      const stateToSave = {
-        joined,
-        waitlistId,
-        remainingTime,
-        restaurantId: effectiveRestaurantId
-      };
-      localStorage.setItem('waitlistState', JSON.stringify(stateToSave));
-      console.log('Saved state to localStorage:', stateToSave);
-    } else {
-      localStorage.removeItem('waitlistState');
-      console.log('Removed state from localStorage');
-    }
-  }, [joined, waitlistId, remainingTime, effectiveRestaurantId]);
-
-  // Clear localStorage and state when timer reaches 0
-  useEffect(() => {
-    if (remainingTime <= 0 && joined) {
-      console.log('Timer reached 0, clearing state');
-      localStorage.removeItem('waitlistState');
-      setJoined(false);
-      setWaitlistId(null);
-    }
-  }, [remainingTime, joined]);
-
-  // Fetch restaurant details and update wait time every 5 minutes
-  useEffect(() => {
-    const fetchRestaurantDetails = async () => {
-      try {
-        setRestaurantLoading(true);
-        console.log('Fetching restaurant details for:', effectiveRestaurantId);
-        const response = await restaurantService.getRestaurant(effectiveRestaurantId);
-        console.log('Restaurant details:', response);
-        setRestaurantName(response.name);
-        setWaitTime(response.current_wait_time);
+        // Update the entry with new data
+        const newWaitlistEntry = {
+          ...userEntry,
+          name: userEntry.customer_name,
+          partySize: userEntry.party_size,
+          phoneNumber: userEntry.phone_number,
+          estimatedWaitTime: userEntry.estimated_wait_time
+        };
         
-        // Only update remaining time if we're not already on the waitlist
-        // or if we're fetching for the first time
-        if (!joined || remainingTime === 0) {
-          console.log('Setting initial remaining time:', response.current_wait_time * 60);
-          setRemainingTime(response.current_wait_time * 60); // Convert minutes to seconds
+        setWaitlistEntry(newWaitlistEntry);
+
+        if (userEntry.estimated_wait_time) {
+          // Calculate new wait time in seconds
+          const newWaitTimeSeconds = userEntry.estimated_wait_time * 60;
+          
+          // Show animation if wait time changed
+          if (previousWaitTime !== userEntry.estimated_wait_time) {
+            const diff = userEntry.estimated_wait_time - previousWaitTime;
+            console.log('⏱️ Wait time changed:', { 
+              previous: previousWaitTime, 
+              current: userEntry.estimated_wait_time, 
+              diff 
+            });
+            
+            // Update the time change animation
+            setShowTimeChange({
+              value: diff > 0 ? '+5 min' : '-5 min',
+              type: diff > 0 ? 'increase' : 'decrease'
+            });
+            
+            // Clear the animation after 1.5 seconds
+            setTimeout(() => setShowTimeChange(null), 1500);
+          }
+          
+          // Update the remaining seconds and refs
+          setRemainingSeconds(newWaitTimeSeconds);
+          lastWaitTimeRef.current = newWaitTimeSeconds;
+          lastUpdateRef.current = Date.now();
         }
-        
-        setRestaurantLoading(false);
-      } catch (err) {
-        console.error('Error fetching restaurant details:', err);
-        setRestaurantName('Restaurant Name');
-        setRestaurantLoading(false);
-        setError('Failed to load restaurant details. Please try again later.');
       }
+    });
+
+    socket.on('restaurant-update', (updatedRestaurant) => {
+      console.log('🏪 Received restaurant update:', updatedRestaurant);
+      setRestaurant(updatedRestaurant);
+    });
+
+    return () => {
+      if (restaurantId) {
+        socket.emit('leave-restaurant', restaurantId);
+      }
+      socket.disconnect();
     };
+  }, [restaurantId]);
 
-    fetchRestaurantDetails();
-    // Update restaurant details every 5 minutes
-    const updateInterval = setInterval(fetchRestaurantDetails, 5 * 60 * 1000);
-    return () => clearInterval(updateInterval);
-  }, [effectiveRestaurantId]);
-
-  // Countdown timer effect
   useEffect(() => {
-    if (!joined || remainingTime <= 0) return;
+    if (remainingSeconds > 0) {
+      countdownRef.current = setInterval(() => {
+        setRemainingSeconds(prev => {
+          const newValue = Math.max(0, prev - 1);
+          if (newValue === 0) {
+            setShowReadyAnimation(true);
+            setTimeout(() => {
+              setShowReadyAnimation(false);
+            }, 5000);
+          }
+          return newValue;
+        });
+      }, 1000);
 
-    console.log('Starting countdown timer with remaining time:', remainingTime);
-    const timer = setInterval(() => {
-      setRemainingTime(prev => {
-        const newTime = Math.max(0, prev - 1);
-        if (newTime === 0) {
-          console.log('Timer reached 0');
+      return () => {
+        if (countdownRef.current) {
+          clearInterval(countdownRef.current);
         }
-        return newTime;
-      });
-    }, 1000);
+      };
+    }
+  }, [remainingSeconds]);
 
-    return () => clearInterval(timer);
-  }, [joined, remainingTime]);
-
-  // Format remaining time
-  const formatRemainingTime = (seconds) => {
+  const formatTime = (seconds) => {
     const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    const remainingSecs = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSecs.toString().padStart(2, '0')}`;
   };
 
-  const handleJoinWaitlist = async () => {
-    try {
-      if (!validateForm()) {
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!restaurantId) {
+        setError('Restaurant ID is required');
+        setLoading(false);
         return;
       }
 
-      setLoading(true);
-      setError(null);
-      
-      const waitlistData = {
-        customer_name: customerName,
-        party_size: partySize,
-        phone_number: phoneNumber,
-        notes: notes.trim() || null,
-        consent_given: consentGiven
-      };
-      
-      console.log(`Adding to waitlist for restaurant: ${effectiveRestaurantId}`);
-      const response = await waitlistService.addToWaitlist(effectiveRestaurantId, waitlistData);
-      
-      // Vibrate on mobile devices for tactile feedback
-      if (navigator.vibrate) {
-        navigator.vibrate(100);
+      try {
+        const [waitlistData, restaurantData] = await Promise.all([
+          restaurantService.getWaitlist(restaurantId),
+          restaurantService.getRestaurantInfo(restaurantId)
+        ]);
+        
+        setRestaurant(restaurantData);
+        
+        // Check if user already has an entry
+        const userEntry = waitlistData.find(entry => 
+          entry.phone_number === waitlistEntry?.phoneNumber
+        );
+        
+        if (userEntry) {
+          setWaitlistEntry({
+            ...userEntry,
+            name: userEntry.customer_name,
+            partySize: userEntry.party_size,
+            phoneNumber: userEntry.phone_number,
+            estimatedWaitTime: userEntry.estimated_wait_time
+          });
+          
+          if (userEntry.estimated_wait_time) {
+            setRemainingSeconds(userEntry.estimated_wait_time * 60);
+            lastUpdateRef.current = Date.now();
+          }
+        }
+        
+        setLoading(false);
+      } catch (err) {
+        setError('Failed to fetch waitlist data');
+        console.error('Error fetching data:', err);
+        setLoading(false);
       }
+    };
+
+    fetchData();
+  }, [restaurantId]);
+
+  const handleJoinWaitlist = async (e) => {
+    e.preventDefault();
+    if (!restaurantId) {
+      setError('Restaurant ID is required');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData(e.target);
+      const entry = {
+        name: formData.get('name'),
+        partySize: parseInt(formData.get('partySize')),
+        phoneNumber: formData.get('phoneNumber'),
+        notes: formData.get('notes')
+      };
+
+      const response = await restaurantService.joinWaitlist(restaurantId, entry);
       
-      setWaitlistId(response.id);
-      setShowJoinSuccess(true);
+      // Set the waitlist entry with the response data
+      setWaitlistEntry({
+        ...entry,
+        id: response.id,
+        status: response.status,
+        estimatedWaitTime: response.estimated_wait_time
+      });
       
-      // Set the remaining time based on the current wait time
-      // Convert minutes to seconds and ensure it's at least 1 minute
-      const initialWaitTime = Math.max(60, waitTime * 60);
-      console.log('Setting initial wait time to:', initialWaitTime, 'seconds');
-      setRemainingTime(initialWaitTime);
-      
-      // Show success animation for 1.5 seconds before showing the confirmation screen
-      setTimeout(() => {
-        setShowJoinSuccess(false);
-        setJoined(true);
-        console.log('Joined waitlist successfully, setting joined to true');
-      }, 1500);
-      
+      // Set the remaining seconds for the countdown timer
+      if (response.estimated_wait_time) {
+        setRemainingSeconds(response.estimated_wait_time * 60);
+        lastUpdateRef.current = Date.now();
+      }
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to join waitlist. Please try again.');
+      setError('Failed to join waitlist');
       console.error('Error joining waitlist:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLeaveWaitlist = async () => {
-    if (!waitlistId) return;
-    
-    if (!window.confirm('Are you sure you want to leave the waitlist?')) {
-      return;
-    }
-    
+  const handleCancel = async () => {
     try {
-      setIsLeaving(true);
-      setError('');
-      
-      // Call the API to remove from waitlist
-      await waitlistService.removeFromWaitlist(waitlistId);
-      
-      // Clear local storage
-      localStorage.removeItem('waitlistState');
-      
-      // Reset state
-      setJoined(false);
-      setWaitlistId(null);
-      setRemainingTime(0);
-      
-      // Show success message
-      setShowLeaveSuccess(true);
-      setTimeout(() => {
-        setShowLeaveSuccess(false);
-      }, 1500);
-      
-    } catch (err) {
-      setError('Failed to leave waitlist. Please try again.');
-      console.error('Error leaving waitlist:', err);
+      setLoading(true);
+      const result = await restaurantService.removeFromWaitlist(waitlistEntry.id);
+      if (result.success) {
+        setWaitlistEntry(null);
+        setError(null);
+        // The socket event will handle updating the restaurant state
+      } else {
+        setError(result.error || 'Failed to cancel waitlist entry');
+      }
+    } catch (error) {
+      console.error('Error canceling waitlist entry:', error);
+      setError(error.message || 'Failed to cancel waitlist entry');
     } finally {
-      setIsLeaving(false);
+      setLoading(false);
     }
   };
 
-  // Debug logging to help identify issues
-  useEffect(() => {
-    console.log('Current state:', {
-      joined,
-      waitlistId,
-      remainingTime,
-      showJoinSuccess,
-      showLeaveSuccess,
-      restaurantId: effectiveRestaurantId
-    });
-  }, [joined, waitlistId, remainingTime, showJoinSuccess, showLeaveSuccess, effectiveRestaurantId]);
+  if (loading) {
+    return (
+      <div className="waitlist-container loading">
+        <div className="loading-spinner">
+          <div className="spinner"></div>
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
-  // Force a re-render if we're on the waitlist but not showing the confirmation screen
-  useEffect(() => {
-    if (joined && !showJoinSuccess && !showLeaveSuccess) {
-      console.log('Forcing re-render of confirmation screen');
-      // This is just to trigger a re-render
-      setJoined(prev => prev);
-    }
-  }, [joined, showJoinSuccess, showLeaveSuccess]);
+  if (error) {
+    return (
+      <div className="waitlist-container error">
+        <div className="error-icon">⚠️</div>
+        <h3>Oops! Something went wrong</h3>
+        <p>{error}</p>
+        <button onClick={() => window.location.reload()}>Try Again</button>
+      </div>
+    );
+  }
 
   return (
     <div className="waitlist-container">
-      <div className="waitlist-content">
-        {showJoinSuccess ? (
-          <div className="success-animation">
-            <svg className="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
-              <circle className="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
-              <path className="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
-            </svg>
-            <h2>Added to Waitlist!</h2>
+      {showCancellationAnimation && (
+        <div className="cancellation-animation">
+          <div className="checkmark">✓</div>
+          <p>Successfully removed from waitlist!</p>
+        </div>
+      )}
+
+      {showReadyAnimation && (
+        <div className="ready-animation">
+          <div className="bell">🔔</div>
+          <p>Your table is ready!</p>
+        </div>
+      )}
+
+      {!waitlistEntry ? (
+        <form onSubmit={handleJoinWaitlist} className="waitlist-form">
+          <h2>Join the Waitlist</h2>
+          {restaurant && (
+            <div className="restaurant-info">
+              <h3>{restaurant.name}</h3>
+              <p>Current Wait Time: {restaurant.current_wait_time} minutes</p>
+            </div>
+          )}
+          <div className="form-group">
+            <label htmlFor="name">Name</label>
+            <input
+              type="text"
+              id="name"
+              name="name"
+              required
+              placeholder="Your name"
+              autoComplete="name"
+            />
           </div>
-        ) : showLeaveSuccess ? (
-          <div className="success-animation">
-            <svg className="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
-              <circle className="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
-              <path className="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
-            </svg>
-            <h2>Left Waitlist Successfully!</h2>
+          <div className="form-group">
+            <label htmlFor="partySize">Party Size</label>
+            <input
+              type="number"
+              id="partySize"
+              name="partySize"
+              required
+              min="1"
+              placeholder="Number of people"
+              autoComplete="off"
+            />
           </div>
-        ) : !joined ? (
-          <>
-            <div className="restaurant-label">Welcome to</div>
-            <h1 className="restaurant-name">
-              {restaurantLoading ? 'Loading...' : restaurantName}
-            </h1>
-            
-            <div className="wait-time">
-              <svg className="clock-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>Estimated wait time: {waitTime} minutes</span>
-            </div>
-
-            {error && <div className="error-message">{error}</div>}
-            
-            <div className="form-group">
-              <label htmlFor="customerName">Your Name</label>
-              <input
-                id="customerName"
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Enter your name"
-                className={formErrors.customerName ? 'error' : ''}
-                required
-              />
-              {formErrors.customerName && (
-                <span className="error-text">{formErrors.customerName}</span>
-              )}
-            </div>
-            
-            <div className="form-group">
-              <label htmlFor="partySize">Party Size</label>
-              <select
-                id="partySize"
-                value={partySize}
-                onChange={(e) => setPartySize(parseInt(e.target.value))}
-              >
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(size => (
-                  <option key={size} value={size}>{size}</option>
-                ))}
-              </select>
-            </div>
-            
-            <div className="form-group">
-              <label htmlFor="phoneNumber">Phone Number</label>
-              <input
-                id="phoneNumber"
-                type="tel"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="Enter your phone number"
-                className={formErrors.phoneNumber ? 'error' : ''}
-                required
-              />
-              {formErrors.phoneNumber && (
-                <span className="error-text">{formErrors.phoneNumber}</span>
-              )}
-            </div>
-            
-            <div className="form-group">
-              <label htmlFor="notes">Special Requests (Optional)</label>
-              <textarea
-                id="notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Any special requests or notes?"
-                rows="3"
-              />
-            </div>
-
-            <div className="consent-container">
-              <input
-                type="checkbox"
-                id="consent"
-                checked={consentGiven}
-                onChange={(e) => setConsentGiven(e.target.checked)}
-                className={formErrors.consent ? 'error' : ''}
-              />
-              <label htmlFor="consent">
-                I consent to receive text messages about my waitlist status. 
-                <Link to="/legal-terms" target="_blank"> View terms</Link>
-              </label>
-              {formErrors.consent && (
-                <span className="error-text">{formErrors.consent}</span>
-              )}
-            </div>
-
-            <button 
-              className={`join-button ${loading ? 'loading' : ''}`}
-              onClick={handleJoinWaitlist}
-              disabled={loading}
-              aria-label="Join Waitlist"
-            >
-              {loading ? (
-                <>
-                  <span className="spinner"></span>
-                  Joining...
-                </>
-              ) : (
-                'Join Waitlist'
-              )}
-            </button>
-          </>
-        ) : (
-          <div className="confirmation">
-            <svg className="check-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <h2 className="confirmation-title">You're on the waitlist!</h2>
-            
-            <div className="wait-time-display">
-              <p className="wait-time-label">Time remaining:</p>
-              <div className="wait-time-value">{formatRemainingTime(remainingTime)}</div>
-            </div>
-
-            <div className="notification-box">
-              <p>
-                We'll send you a notification when your table is ready.
-                Feel free to explore the area while you wait!
-              </p>
-            </div>
-            
-            {waitlistId && (
-              <div className="waitlist-id">
-                <p>Your waitlist ID: {waitlistId}</p>
-              </div>
+          <div className="form-group">
+            <label htmlFor="phoneNumber">Phone Number</label>
+            <input
+              type="tel"
+              id="phoneNumber"
+              name="phoneNumber"
+              required
+              placeholder="Your phone number"
+              autoComplete="tel"
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="notes">Notes (Optional)</label>
+            <textarea
+              id="notes"
+              name="notes"
+              placeholder="Any special requests?"
+              autoComplete="off"
+            />
+          </div>
+          <button type="submit" disabled={loading}>
+            {loading ? 'Joining...' : 'Join Waitlist'}
+          </button>
+        </form>
+      ) : (
+        <div className="waitlist-status">
+          <h2>Your Waitlist Status</h2>
+          <div className="status-details">
+            <p><strong>Name:</strong> {waitlistEntry.name}</p>
+            <p><strong>Party Size:</strong> {waitlistEntry.partySize}</p>
+            <p><strong>Phone:</strong> {waitlistEntry.phoneNumber}</p>
+            {waitlistEntry.notes && (
+              <p><strong>Notes:</strong> {waitlistEntry.notes}</p>
             )}
-            
-            {error && <div className="error-message">{error}</div>}
-            
-            <button 
-              className="leave-button"
-              onClick={handleLeaveWaitlist}
-              disabled={isLeaving}
-            >
-              {isLeaving ? (
-                <>
-                  <span className="spinner"></span>
-                  Leaving...
-                </>
-              ) : (
-                'Leave Waitlist'
+            <div className="countdown-container">
+              <p className="countdown-label">Estimated Wait Time</p>
+              <div className="countdown-timer">{formatTime(remainingSeconds)}</div>
+              {showTimeChange && (
+                <div className={`wait-time-change ${showTimeChange.type}`}>
+                  {showTimeChange.value}
+                </div>
               )}
-            </button>
+            </div>
           </div>
-        )}
-      </div>
+          <button 
+            onClick={handleCancel}
+            disabled={loading}
+            className="cancel-button"
+          >
+            {loading ? 'Canceling...' : 'Cancel Waitlist Entry'}
+          </button>
+        </div>
+      )}
     </div>
   );
-} 
+};
+
+export default Waitlist; 

@@ -115,8 +115,14 @@ export const restaurantService = {
 // Waitlist services
 export const waitlistService = {
   addToWaitlist: async (restaurantId, waitlistData) => {
-    const response = await api.post(`/restaurant/${restaurantId}/waitlist`, waitlistData);
-    return response.data;
+    try {
+      const response = await api.post(`/restaurant/${restaurantId}/waitlist`, waitlistData);
+      console.log('Waitlist response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error adding to waitlist:', error);
+      throw error;
+    }
   },
   
   getWaitlist: async (restaurantId) => {
